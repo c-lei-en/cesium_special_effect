@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="http://localhost:9999/Cesium.js"></script>
+    <link
+      type="text/css"
+      rel="stylesheet"
+      href="https://sandcastle.cesium.com/CesiumUnminified/Widgets/widgets.css"
+    />
+    <style lang="scss">
+      html,
+      body,
+      #container {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        position: absolute;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container"></div>
+    <script>
+      let viewer = new Cesium.Viewer("container", {
+        geocoder: false, // 隐藏搜索
+        homeButton: false, // 隐藏主页
+        sceneModePicker: false, // 隐藏二三维转换
+        navigationHelpButton: false, // 隐藏帮助按钮
+        animation: false, // 隐藏时钟
+        timeline: false, // 隐藏时间轴
+        fullscreenButton: false, // 隐藏全屏
+        vrButton: false, // 隐藏双屏模式
+        infoBox: false, // 隐藏点击 entity 信息框
+        selectionIndicator: false, // 隐藏点击 entity 绿框
+        shouldAnimate: true,
+        imageryProvider: new Cesium.UrlTemplateImageryProvider({
+          url: "http:192.168.21.52:4326/{z}/{x}/{y}.png",
+          style: "default",
+          format: "image/png",
+        }),
+      });
+      let chinaPosition = Cesium.Cartesian3.fromDegrees(
+        126.957,
+        45.547,
+        7000000.0
+      );
+      viewer.camera.flyTo({
+        destination: chinaPosition,
+        duration: 1, // 飞行时间
+        offset: new Cesium.HeadingPitchRange(0.0, Cesium.Math.toRadians(-20.0)), // 偏移量
+      });
+      function computeFlyline(
+        point1 = [126.957, 45.547],
+        point2 = [120.28429, 31.52853],
+        h = 500000
+      ) {
+        let flyline = getBSRxyz(...point1, ...point2, h);
+        return flyline;
+        // 将数据转换为cesium polyline positions格式
+        function getBSRxyz(x1, y1, x2, y2, h) {
+          let arr3d = getBSRPoints(x1, y1, x2, y2, h);
+          let arrAll = [];
+          for (let ite of arr3d) {
+            arrAll.push(ite[0]);
+            arrAll.push(ite[1]);
+            arrAll.push(ite[2]);
+          }
+          return Cesium.Cartesian3.fromDegreesArrayHeights(arrAll);
+        }
+        function getBSRPoints(x1, y1, x2, y2, h) {
+          let point1 = [y1, 0];
+          let point2 = [(y2 + y1) / 2, h];
+          let point3 = [y2, 0];
+          let arr = getBSR(point1, point2, point3);
+          let arr3d = [];
+          for (let i = 0; i < arr.length; i++) {
+            let x = ((x2 - x1) * (arr[i][0] - y1)) / (y2 - y1) + x1;
+            arr3d.push([x, arr[i][0], arr[i][1]]);
+          }
+          return arr3d;
+        }
+        // 生成贝塞尔曲线
+        function getBSR(point1, point2, point3) {
+          var ps = [
+            { x: point1[0], y: point1[1] },
+            { x: point2[0], y: point2[1] },
+            { x: point3[0], y: point3[1] },
+          ];
+          // 100 每条线由100个点组成
+          let guijipoints = CreateBezierPoints(ps, 100);
+          return guijipoints;
+        }
+        // 贝赛尔曲线算法
+        // 参数：
+        // anchorpoints: [{ x: 116.30, y: 39.60 }, { x: 37.50, y: 40.25 }, { x: 39.51, y: 36.25 }]
+        function CreateBezierPoints(anchorpoints, pointsAmount) {
+          var points = [];
+          for (var i = 0; i < pointsAmount; i++) {
+            var point = MultiPointBezier(anchorpoints, i / pointsAmount);
+            points.push([point.x, point.y]);
+          }
+          return points;
+        }
+        function MultiPointBezier(points, t) {
+          var len = points.length;
+          var x = 0,
+            y = 0;
+          var erxiangshi = function (start, end) {
+            var cs = 1,
+              bcs = 1;
+            while (end > 0) {
+              cs *= start;
+              bcs *= end;
+              start--;
+              end--;
+            }
+            return cs / bcs;
+          };
+          for (var i = 0; i < len; i++) {
+            var point = points[i];
+            x +=
+              point.x *
+              Math.pow(1 - t, len - 1 - i) *
+              Math.pow(t, i) *
+              erxiangshi(len - 1, i);
+            y +=
+              point.y *
+              Math.pow(1 - t, len - 1 - i) *
+              Math.pow(t, i) *
+              erxiangshi(len - 1, i);
+          }
+          return { x: x, y: y };
+        }
+      }
+
+      function getFlylineMaterial() {
+        // 创建材质，在MaterialAppearance中若不添加基础材质，模型将会透明
+        var material = new Cesium.Material.fromType("Color");
+        material.uniforms.color = Cesium.Color.ORANGE;
+        // 飞线效果-飞线间隔，宽度2
+        let fragmentShaderSource = `         
+            varying vec2 v_st;
+            varying float v_width;
+            varying float v_polylineAngle;
+            varying vec4 v_positionEC;
+            varying vec3 v_normalEC;
+            void main()
+            {
+                vec2 st = v_st;
+                float xx = sin(st.s*6.0 -czm_frameNumber/5.0) - cos(st.t*6.0);
+                            float r = 0.0;
+                            float g = xx;
+                            float b = xx;
+                            float a = xx;
+                gl_FragColor = vec4(r,g,b,a);
+            }
+        `;
+        // 自定义材质
+        const aper = new Cesium.PolylineMaterialAppearance({
+          material: material,
+          translucent: true,
+          fragmentShaderSource: fragmentShaderSource,
+        });
+        return aper;
+      }
+
+      const PolylineGeometry = new Cesium.PolylineGeometry({
+        positions: computeFlyline(),
+        width: 2,
+      });
+      const instance = new Cesium.GeometryInstance({
+        geometry: PolylineGeometry,
+        id: "flyline",
+      });
+      let en = viewer.scene.primitives.add(
+        new Cesium.Primitive({
+          geometryInstances: [instance],
+          appearance: getFlylineMaterial(),
+          releaseGeometryInstances: false,
+          compressVertices: false,
+        })
+      );
+    </script>
+  </body>
+</html>
