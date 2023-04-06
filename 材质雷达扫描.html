@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="http://localhost:9999/Cesium.js"></script>
+    <link
+      type="text/css"
+      rel="stylesheet"
+      href="https://sandcastle.cesium.com/CesiumUnminified/Widgets/widgets.css"
+    />
+    <style lang="scss">
+      html,
+      body,
+      #container {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        position: absolute;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container"></div>
+    <script>
+      let viewer = new Cesium.Viewer("container", {
+        geocoder: false, // 隐藏搜索
+        homeButton: false, // 隐藏主页
+        sceneModePicker: false, // 隐藏二三维转换
+        navigationHelpButton: false, // 隐藏帮助按钮
+        animation: false, // 隐藏时钟
+        timeline: false, // 隐藏时间轴
+        fullscreenButton: false, // 隐藏全屏
+        vrButton: false, // 隐藏双屏模式
+        infoBox: false, // 隐藏点击 entity 信息框
+        selectionIndicator: false, // 隐藏点击 entity 绿框
+        shouldAnimate: true,
+        imageryProvider: new Cesium.UrlTemplateImageryProvider({
+          url: "http:192.168.21.52:4326/{z}/{x}/{y}.png",
+          style: "default",
+          format: "image/png",
+        }),
+      });
+      let chinaPosition = Cesium.Cartesian3.fromDegrees(
+        126.957,
+        45.547,
+        7000000.0
+      );
+      viewer.camera.flyTo({
+        destination: chinaPosition,
+        duration: 1, // 飞行时间
+        offset: new Cesium.HeadingPitchRange(0.0, Cesium.Math.toRadians(-20.0)), // 偏移量
+      });
+
+      const cartographicCenter = new Cesium.Cartographic(
+        Cesium.Math.toRadians(126.957),
+        Cesium.Math.toRadians(45.547),
+        0
+      );
+      const _Cartesian3Center =
+        Cesium.Cartographic.toCartesian(cartographicCenter);
+      const _Cartesian4Center = new Cesium.Cartesian4(
+        _Cartesian3Center.x,
+        _Cartesian3Center.y,
+        _Cartesian3Center.z,
+        1
+      );
+
+      let scanCenterEC = Cesium.Matrix4.multiplyByVector(
+        viewer.camera._viewMatrix,
+        _Cartesian4Center,
+        new Cesium.Cartesian4()
+      );
+
+      const circleFabric = {
+        type: "circleFabric",
+        uniforms: {
+          color: Cesium.Color.fromCssColorString("rgba(0, 255, 0, 0.5)"),
+          speed: 2
+        },
+        source: `
+            #define SMOOTH(r,R) (1.0-smoothstep(R-1.0,R+1.0, r))
+            #define M_PI 3.1415926535897932384626433832795
+            float movingLine(vec2 uv, vec2 center, float radius) {
+              float theta0 = 90.0 * fract(czm_frameNumber/60.0 * speed) * 4.0;
+              vec2 d = uv - center;
+              float r = sqrt(dot(d, d));
+              if(r < radius) {
+                  vec2 p = radius * vec2(cos(theta0 * M_PI / 180.0), -sin(theta0 * M_PI / 180.0));
+                  float l = length(d - p * clamp(dot(d, p) / dot(p, p), 0.0, 1.0));
+                  d = normalize(d);
+                  
+                  float theta = mod(180.0 * atan(d.y, d.x) / M_PI + theta0, 360.0);
+                  float gradient = clamp(1.0 - theta / 90.0, 0.0, 1.0);
+                  return SMOOTH(l, 1.0) + 0.25 * gradient;
+              } else
+                  return 0.0;
+            }
+            czm_material czm_getMaterial(czm_materialInput materialInput) {
+                czm_material material = czm_getDefaultMaterial(materialInput);
+                vec2 st = materialInput.st;
+                vec2 center = vec2(0.5,0.5);
+                float fragValue = movingLine(st, center, 1.0);
+                material.alpha = color.a;
+                material.emission = fragValue * vec3(color.rgb);
+                return material;
+            }`,
+      };
+      
+      const circleInstance = new Cesium.GeometryInstance({
+        geometry: new Cesium.CircleGeometry({
+          center: Cesium.Cartesian3.fromDegrees(97.0, 43.0),
+          radius: 500000,
+          vertexFormat: Cesium.MaterialAppearance.VERTEX_FORMAT,
+        }),
+      });
+      let primi = new Cesium.Primitive({
+        geometryInstances: circleInstance,
+        appearance: new Cesium.MaterialAppearance({
+            material: new Cesium.Material({ fabric: circleFabric }),
+        }),
+      });
+      viewer.scene.primitives.add(primi);
+    </script>
+  </body>
+</html>

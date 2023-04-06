@@ -61,7 +61,7 @@
         // 获取纹理坐标
         vec2 st = materialInput.st;
         // 对 uniforms.image 的纹理图片进行采样
-        // 这里需要根据时间来采样，公式含义读者自行研究，czm_frameNumber * 0.005 * speed 就是根据内置的czm_frameNumber，即当前帧数来代表大致时间
+        // 这里需要根据时间来采样，czm_frameNumber * 0.005 * speed 就是根据内置的czm_frameNumber，即当前帧数来代表大致时间
         vec4 colorImage = texture2D(image, vec2(fract((st.t - speed * czm_frameNumber * 0.005)), st.t));
         vec4 fragColor;
         fragColor.rgb = color.rgb / 1.0;
